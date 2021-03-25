@@ -122,7 +122,7 @@ class VGG19:
         def go(x):
             x = x.view(noise_size)
             output = net(x)
-            se = torch.mean((output - target) ** 2)
+            se = torch.sum((output - target) ** 2)
             return se
 
         def f(x):
@@ -135,10 +135,10 @@ class VGG19:
         # ================
         init_loss = go(noise).item()
         # noise = noise.contiguous().view(-1)
-        optimizer = torch.optim.LBFGS([noise], lr=lr)
+        optimizer = torch.optim.LBFGS([noise], max_iter=iters, lr=lr, tolerance_grad=1e-4)
         optimizer.zero_grad()
 
-        for idx in range(10):
+        for idx in range(20):
             def closure():
                 optimizer.zero_grad()
                 Loss = go(noise)
