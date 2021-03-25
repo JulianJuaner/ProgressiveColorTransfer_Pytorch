@@ -1,0 +1,4 @@
+origin_caffe*
+*.pyc
+*prototxt
+*.bat
