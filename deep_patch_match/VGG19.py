@@ -67,7 +67,8 @@ class VGG19:
                 self.model.add_layer(name, layer)  # ***
 
         self.model.to(device)
-        self.mean_ = (103.939, 116.779, 123.68)
+        self.mean_ = (0.485, 0.456, 0.406)
+        self.std_ = (0.229, 0.224, 0.225)
 
     def forward_subnet(self, input_tensor, start_layer, end_layer):
         for i, layer in enumerate(list(self.model)):
@@ -76,18 +77,22 @@ class VGG19:
         return input_tensor
 
     def get_features(self, img_tensor, layers):
+        img_tensor = img_tensor/255
         img_tensor = img_tensor.to(self.device)
 
-        # assert torch.max(img_tensor)<=1.0 and torch.min(img_tensor)>=0.0, 'inccorect range of tensor'
+        assert torch.max(img_tensor)<=1.0 and torch.min(img_tensor)>=0.0, 'inccorect range of tensor'
         for chn in range(3):
             img_tensor[:, chn, :, :] -= self.mean_[chn]
-
+        for chn in range(3):
+            img_tensor[:, chn, :, :] /= self.std_[chn]
+            
         features_raw = self.model(img_tensor)
         features = []
         for i, f in enumerate(features_raw):
             if (i) in layers:
                 features.append(f.detach())
         features.reverse()
+        # LEVEL 54321 + ORIGIN IMG TENSOR.
         features.append(img_tensor.detach())
 
         sizes = [f.size() for f in features]
@@ -135,7 +140,7 @@ class VGG19:
         # ================
         init_loss = go(noise).item()
         # noise = noise.contiguous().view(-1)
-        optimizer = torch.optim.LBFGS([noise], max_iter=iters, lr=lr, tolerance_grad=1e-4)
+        optimizer = torch.optim.LBFGS([noise], max_iter=iters, lr=lr)
         optimizer.zero_grad()
 
         for idx in range(20):

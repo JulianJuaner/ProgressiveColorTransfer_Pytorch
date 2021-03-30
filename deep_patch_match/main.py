@@ -22,7 +22,7 @@ if __name__=="__main__":
     # load images
     print('Loading images...', end='')
     img_A = load_image(args.img_A_path, args.resize_ratio)
-    img_BP = cv2.resize(load_image(args.img_BP_path, args.resize_ratio), img_A.shape[:2])
+    img_BP = cv2.resize(load_image(args.img_BP_path, args.resize_ratio), (img_A.shape[1], img_A.shape[0]))
     print('\rImages loaded successfully!')
 
 
@@ -58,7 +58,8 @@ if __name__=="__main__":
             count += 1
     save_path = 'results/expr_{}'.format(count)
     os.mkdir(save_path)
-
+    # img_AP = cv2.cvtColor(img_AP, cv2.COLOR_BGR2RGB)
+    # img_B = cv2.cvtColor(img_B, cv2.COLOR_BGR2RGB)
     cv2.imwrite(save_path+'/img_AP.png', img_AP)
     cv2.imwrite(save_path+'/img_B.png', img_B)
     print('Image saved!')

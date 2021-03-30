@@ -43,6 +43,7 @@ def normalize(feature_map):
     normalized feature map
     response
     """
+    # SUMMATION: 1, C, H, W: ALONG DIM 1: 1, H, W
     response = torch.sum(feature_map*feature_map, dim=1, keepdim=True)
     normed_feature_map = feature_map/torch.sqrt(response)
 
@@ -53,6 +54,7 @@ def normalize(feature_map):
 
 def load_image(file_A, resizeRatio=1.0):
     ori_AL = cv2.imread(file_A)
+    ori_AL = cv2.cvtColor(ori_AL, cv2.COLOR_BGR2RGB)
     ori_img_sizes = ori_AL.shape[:2]
 
     # resize

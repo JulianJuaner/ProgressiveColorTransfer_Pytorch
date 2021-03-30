@@ -22,10 +22,10 @@ def analogy(img_A, img_BP, config):
         raise NotImplementedError('cpu mode is not supported yet')
 
     # preparing data
-    img_A_tensor = torch.FloatTensor(img_A.transpose(2, 0, 1))
+    img_A_tensor = torch.FloatTensor(img_A.transpose(2, 0, 1)) # C, H, W
     img_BP_tensor = torch.FloatTensor(img_BP.transpose(2, 0, 1))
     img_A_tensor, img_BP_tensor = img_A_tensor.to(device), img_BP_tensor.to(device)
-
+    # 1, C, H, W
     img_A_tensor = img_A_tensor.unsqueeze(0)
     img_BP_tensor = img_BP_tensor.unsqueeze(0)
 
@@ -42,6 +42,7 @@ def analogy(img_A, img_BP, config):
         start_time_1 = time.time()
 
         if curr_layer == 0:
+            # SIZE[2:]: H, W
             ann_AB = init_nnf(data_A_size[curr_layer][2:], data_B_size[curr_layer][2:])
             ann_BA = init_nnf(data_B_size[curr_layer][2:], data_A_size[curr_layer][2:])
         else:
@@ -57,7 +58,8 @@ def analogy(img_A, img_BP, config):
 
         Ndata_AP, _ = normalize(data_AP[curr_layer])
         Ndata_B, _ = normalize(data_B[curr_layer])
-
+        # 20210326: UP TO HERE.
+        
         # NNF search
         print("- NNF search for ann_AB")
         start_time_2 = time.time()

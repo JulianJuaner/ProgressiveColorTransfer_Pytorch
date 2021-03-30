@@ -5,12 +5,16 @@ from torch.multiprocessing import Pool
 
 def init_nnf(size, B_size=None):
     nnf = np.zeros(shape=(2, size[0], size[1])).astype(np.int)
+    # X COORD, Y COORD
     nnf[0] = np.array([np.arange(size[0])] * size[1]).T
     nnf[1] = np.array([np.arange(size[1])] * size[0])
+    # SIZE: [H, W, 2]
     nnf = nnf.transpose((1, 2, 0))
     if B_size is not None:
+        # MAP TO IMAGE B
         nnf[:, :, 0] = nnf[:, :, 0] * (B_size[0] / size[0])
         nnf[:, :, 1] = nnf[:, :, 1] * (B_size[1] / size[1])
+        # CONVERT TO INTEGER
         nnf = np.array(nnf, dtype=np.int)
 
     return nnf
@@ -263,6 +267,7 @@ def cal_dist(ay, ax, by, bx, feat_A, feat_AP, feat_B, feat_BP, A_size, B_size, p
     """
     Calculate distance between a patch in A to a patch in B.
     :return: Distance calculated between the two patches
+    just cosine distance.
     """
 
     dx0 = dy0 = patch_size // 2
