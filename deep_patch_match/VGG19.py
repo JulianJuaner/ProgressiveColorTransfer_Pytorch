@@ -8,7 +8,7 @@ import torch
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
-from lbfgs import lbfgs
+from .lbfgs import lbfgs
 import copy
 
 

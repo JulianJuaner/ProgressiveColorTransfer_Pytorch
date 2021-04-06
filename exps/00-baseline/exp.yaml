@@ -1,0 +1,17 @@
+NAME: baseline-inference
+FOLDER: ./exps/00-baseline/
+
+DATA:
+  inference_mode: single
+  content_img_folder: demo/example/in/
+  style_img_folder: demo/example/tar/
+
+DEEPMATCH:
+  layers: [29,20,11,6,1]
+  patch_sizes: [3,3,3,5,5,3]
+  rangee: [32,6,6,4,4,2]
+  resize_ratio: 1.0
+  weight: 2
+
+COLORMODEL:
+  
