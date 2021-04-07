@@ -8,7 +8,6 @@ import torch
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
-from .lbfgs import lbfgs
 import copy
 
 
@@ -65,7 +64,6 @@ class VGG19:
                 name = "batn_" + str(block_counter) + "_" + str(batn_counter) + "__" + str(i)
                 batn_counter += 1
                 self.model.add_layer(name, layer)  # ***
-
         self.model.to(device)
         self.mean_ = (0.485, 0.456, 0.406)
         self.std_ = (0.229, 0.224, 0.225)

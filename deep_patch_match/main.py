@@ -10,10 +10,10 @@ def str2bool(v):
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--resize_ratio', type=float, default=0.5)
+    parser.add_argument('--resize_ratio', type=float, default=1.0)
     parser.add_argument('--weight', type=int, default=2, choices=[2,3])
-    parser.add_argument('--img_A_path', type=str, default='data/demo/ava.png')
-    parser.add_argument('--img_BP_path', type=str, default='data/demo/mona.png')
+    parser.add_argument('--img_A_path', type=str, default='data/demo/0in3.png')
+    parser.add_argument('--img_BP_path', type=str, default='data/demo/0tar3.png')
     parser.add_argument('--use_cuda', type=str2bool, default=True)
 
     args = parser.parse_args()
@@ -22,6 +22,7 @@ if __name__=="__main__":
     # load images
     print('Loading images...', end='')
     img_A = load_image(args.img_A_path, args.resize_ratio)
+    print(img_A.shape)
     img_BP = cv2.resize(load_image(args.img_BP_path, args.resize_ratio), (img_A.shape[1], img_A.shape[0]))
     print('\rImages loaded successfully!')
 

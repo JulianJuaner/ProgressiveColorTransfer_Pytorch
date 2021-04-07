@@ -6,9 +6,7 @@ class Options():
         self.initialized = False
 
     def initialize(self, parser):
-        
         # Dataset options
-        parser.add_argument('--exp', type=str, default='exp/01',         help='name of the exp folder')
-        parser.add_argument('--profile', type=str, default='240',        help='name of the cluster profile')
+        parser.add_argument('--exp', type=str, default='exp/00-baseline/',         help='name of the exp folder')
         self.initialized = True
         return parser

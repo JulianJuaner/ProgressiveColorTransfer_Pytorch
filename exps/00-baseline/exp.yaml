@@ -8,8 +8,9 @@ DATA:
 
 DEEPMATCH:
   layers: [29,20,11,6,1]
-  patch_sizes: [3,3,3,5,5,3]
+  patch_sizes: [3,3,3,3,3,3]
   rangee: [32,6,6,4,4,2]
+  iters: 10
   resize_ratio: 1.0
   weight: 2
 

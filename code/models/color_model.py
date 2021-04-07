@@ -1,5 +1,9 @@
-from code.models.nnf import BidirectNNF
+from code.models.nnf import BidirectNNF, normalize, ts2np, np2ts, blend
+from deep_patch_match import VGG19, init_nnf, upSample_nnf, avg_vote, propagate, reconstruct_avg
 
+import copy
+import time
+import datetime
 import torch
 import torch.nn as nn
 
@@ -14,20 +18,19 @@ class ProgressiveTransfer(nn.Module):
 
     def forward(self, data):
         # Save VGG net for style images
-        style_feat_list = []
-        style_size_list = []
-        style_list = data["style_img"]
-        for style_img in style_list:
-            feat, size = self.nnf_match.feature_extraction(style_img.cuda())
-            style_feat_list.append(feat)
-            style_size_list.append(size)
+        style_img = data["style_img"]        
+        data_BP, data_B_size = self.nnf_match.feature_extraction(style_img.cuda())
+        data_B = copy.deepcopy(data_BP)
 
-        print(style_feat_list[0][0].shape)
-
-        for ref in range(len(style_list)):
-            for i in range(len(self.levels)):
-                temp_guidance_map = self.nnf_match.compute_guidance_map(data["content_img"].cuda(),
-                                        style_feat_list[ref][i])
+        # initialize input as the source image.
+        intermidiate_img = data["content_img"].clone().cuda()
+        print(intermidiate_img.shape)
+        for curr_layer in range(self.levels):
+            data_A, data_A_size = self.nnf_match.feature_extraction(intermidiate_img)
+            temp_guidance_map = self.nnf_match.compute_guidance_map(intermidiate_img, style_img,
+                                        curr_layer, data_A[curr_layer], data_A_size[curr_layer],
+                                        data_BP[curr_layer], data_B_size[curr_layer])
+            
 
         res_dict = dict()
         return res_dict

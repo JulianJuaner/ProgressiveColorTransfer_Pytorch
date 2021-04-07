@@ -40,7 +40,7 @@ def analogy(img_A, img_BP, config):
     for curr_layer in range(5):
         print("\n### current stage: %d - start ###"%(5-curr_layer))
         start_time_1 = time.time()
-
+        print(data_A[curr_layer])
         if curr_layer == 0:
             # SIZE[2:]: H, W
             ann_AB = init_nnf(data_A_size[curr_layer][2:], data_B_size[curr_layer][2:])
@@ -65,6 +65,7 @@ def analogy(img_A, img_BP, config):
         start_time_2 = time.time()
         ann_AB, _ = propagate(ann_AB, ts2np(Ndata_A), ts2np(Ndata_AP), ts2np(Ndata_B), ts2np(Ndata_BP), sizes[curr_layer],
                               params['iter'], rangee[curr_layer])
+        print(ann_AB, weights, params, rangee)
         print("\tElapse: "+str(datetime.timedelta(seconds=time.time()- start_time_2))[:-7])
 
         print("- NNF search for ann_BA")
