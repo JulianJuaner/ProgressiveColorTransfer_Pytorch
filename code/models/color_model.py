@@ -23,7 +23,8 @@ class ProgressiveTransfer(nn.Module):
 
     def forward(self, data):
         # Save VGG net for style images
-        style_img = data["style_img"]        
+        style_img = data["style_img"]
+        origin_style = style_img[0].cpu().numpy().transpose(1,2,0).astype(np.uint8)  
         data_BP, data_B_size = self.nnf_match.feature_extraction(style_img.cuda())
         data_B = copy.deepcopy(data_BP)
 
@@ -31,12 +32,15 @@ class ProgressiveTransfer(nn.Module):
         intermidiate_img = data["content_img"][0].clone().cuda()
         origin_size = intermidiate_img.shape[1:]
         origin_content = intermidiate_img.cpu().numpy().transpose(1,2,0).astype(np.uint8)
-        cie_origin_content = torch.FloatTensor(cv2.cvtColor(origin_content.astype(np.uint8), cv2.COLOR_RGB2Lab).transpose(2,0,1)).cuda()
-
+        cie_origin_content = torch.FloatTensor(cv2.cvtColor(origin_content.astype(np.uint8), cv2.COLOR_BGR2Lab).transpose(2,0,1)).cuda()/100
+        cv2.imwrite(os.path.join(self.cfg.FOLDER, "content.png"), cv2.cvtColor(origin_content, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(os.path.join(self.cfg.FOLDER, "style.png"), cv2.cvtColor(origin_style, cv2.COLOR_RGB2BGR))
         print(intermidiate_img.shape)
+        
         for curr_layer in range(self.levels):
             data_A, data_A_size = self.nnf_match.feature_extraction(intermidiate_img.unsqueeze(0))
             img_AP = intermidiate_img.cpu().numpy().transpose(1,2,0).astype(np.uint8)
+            cie_intermidiate = torch.FloatTensor(cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2Lab).transpose(2,0,1)).cuda()/100
             img_AP = cv2.resize(img_AP,
                                 (data_A_size[curr_layer][3], data_A_size[curr_layer][2]),
                                 cv2.INTER_CUBIC).astype(np.float32)
@@ -48,11 +52,11 @@ class ProgressiveTransfer(nn.Module):
             # color estimation.
             alpha_param = nn.Parameter(torch.ones((3, feat_AP.shape[-2], feat_AP.shape[-1])).cuda(), requires_grad=True)
             beta_param = nn.Parameter(torch.zeros((3, feat_AP.shape[-2], feat_AP.shape[-1])).cuda(), requires_grad=True)
-            cie_dataA = torch.FloatTensor(cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_RGB2Lab).transpose(2,0,1)).cuda()
+            cie_dataA = torch.FloatTensor(cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2Lab).transpose(2,0,1)).cuda()/100
             # print(img_AP, cie_dataA)
-            cie_guidance = torch.FloatTensor(cv2.cvtColor(temp_guidance_map.astype(np.uint8), cv2.COLOR_RGB2Lab).transpose(2,0,1)).cuda()
+            cie_guidance = torch.FloatTensor(cv2.cvtColor(temp_guidance_map.astype(np.uint8), cv2.COLOR_BGR2Lab).transpose(2,0,1)).cuda()/100
             # print(cie_guidance, cie_dataA, self.mse_loss(cie_dataA, cie_guidance))
-            optimizer = torch.optim.LBFGS([alpha_param, beta_param], lr=1e-3)
+            optimizer = torch.optim.LBFGS([alpha_param, beta_param], lr=1e-5)
             optimizer.zero_grad()
             feature_error = torch.mean(normalize(self.mse_loss(feat_AP, data_A[curr_layer]))[0], dim=1)
             
@@ -88,9 +92,9 @@ class ProgressiveTransfer(nn.Module):
             alpha_param = F.interpolate(alpha_param.detach().unsqueeze(0), size=origin_size, mode='bilinear')[0]
             beta_param = F.interpolate(beta_param.detach().unsqueeze(0), size=origin_size, mode='bilinear')[0]
 
-            intermidiate_img_np = ((cie_origin_content*alpha_param + beta_param)).cpu().numpy().transpose(1,2,0).astype(np.uint8)
+            intermidiate_img_np = (100*(cie_intermidiate*alpha_param + beta_param)).cpu().numpy().transpose(1,2,0).astype(np.uint8)
             intermidiate_img_np = cv2.cvtColor(intermidiate_img_np, cv2.COLOR_LAB2RGB)
-            cv2.imwrite(os.path.join(self.cfg.FOLDER, "inter_res_{}.png".format(5-curr_layer)), intermidiate_img_np)
+            cv2.imwrite(os.path.join(self.cfg.FOLDER, "inter_res_{}.png".format(5-curr_layer)), cv2.cvtColor(intermidiate_img_np, cv2.COLOR_RGB2BGR))
             intermidiate_img = torch.FloatTensor(intermidiate_img_np.transpose(2,0,1)).cuda()
 
         res_dict = dict()
