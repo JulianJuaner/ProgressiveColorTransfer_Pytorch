@@ -90,7 +90,8 @@ class BidirectNNF(nn.Module):
                             data_BP, 
                             data_B_size):
         # print(img_BP)
-        img_BP = img_BP[0].numpy().transpose(1,2,0)
+        img_BP = img_BP[0].numpy().transpose(1,2,0).astype(np.uint8)
+        img_BP = cv2.resize(img_BP, (data_B_size[3], data_B_size[2]), cv2.INTER_CUBIC).astype(np.float32)
         ann_AB = init_nnf(data_A_size[2:], data_B_size[2:])
         ann_BA = init_nnf(data_B_size[2:], data_A_size[2:])
         data_AP = copy.deepcopy(data_A)
@@ -116,12 +117,28 @@ class BidirectNNF(nn.Module):
         # start_time_2 = time.time()
         # ann_BA, _ = propagate(ann_BA, ts2np(Ndata_BP), ts2np(Ndata_B), ts2np(Ndata_AP), ts2np(Ndata_A), self.sizes[curr_layer],
         #                       self.iters, self.rangee[curr_layer])
-        # print(ann_BA)
+        # # print(ann_BA)
         # print("\tElapse: "+str(datetime.timedelta(seconds=time.time()- start_time_2))[:-7])
-        img_AP = reconstruct_avg(ann_AB, img_BP, self.sizes[curr_layer], data_A_size[2:], img_BP.shape[:2])
-        # img_B = reconstruct_avg(ann_BA, img_A, sizes[curr_layer], data_A_size[curr_layer][2:], data_B_size[curr_layer][2:])
-        cv2.imwrite(os.path.join(opts.FOLDER, "guidance_{}.png".format(5-curr_layer)), img_AP.astype(np.uint8))
-        return img_AP
+
+       
+        # ann_AB_backward = np.ones((data_A_size[2], data_A_size[3], 2))*-1
+
+        # for i in range(ann_BA.shape[0]):
+        #     for j in range(ann_BA.shape[1]):
+        #         ann_AB_backward[ann_BA[i]][ann_BA[j]] = np.array([i, j])
+
+        # img_AP_b = reconstruct_avg(ann_AB_backward, img_BP, self.sizes[curr_layer], data_A_size[2:], data_B_size[2:])
+        # img_AP = cv2.cvtColor((img_AP/3 + img_AP_b*2/3).astype(np.uint8), cv2.COLOR_BGR2RGB)
+        
+        data_AP_np = avg_vote(ann_AB, ts2np(data_BP), self.sizes[curr_layer], data_A_size[2:],
+                              data_B_size[2:])
+        data_AP = np2ts(data_AP_np, 0)
+
+        img_AP = reconstruct_avg(ann_AB, img_BP, self.sizes[curr_layer], data_A_size[2:], data_B_size[2:])
+        img_AP = cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2RGB)
+        cv2.imwrite(os.path.join(self.cfg.FOLDER, "guidance_{}.png".format(5-curr_layer)), img_AP)
+
+        return img_AP, data_AP
 
 
 def BDS_vote(nnf_AB, nnf_BA, A_size, B_size, weight):

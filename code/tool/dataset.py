@@ -22,8 +22,8 @@ class SingleStyleDataset(Dataset):
         content_path = self.content_list[item%len(self)]
         style_path = self.style_list[item%len(self)]
         print(content_path, style_path)
-        content_img = cv2.imread(content_path, 1)
-        style_img = cv2.imread(style_path, 1)
+        content_img = cv2.cvtColor(cv2.imread(content_path, 1), cv2.COLOR_BGR2RGB)
+        style_img = cv2.cvtColor(cv2.imread(style_path, 1), cv2.COLOR_BGR2RGB)
 
         content_img = torch.from_numpy(content_img.transpose(2,0,1)).float()/self.value_scale
         style_img = torch.from_numpy(style_img.transpose(2,0,1)).float()/self.value_scale
