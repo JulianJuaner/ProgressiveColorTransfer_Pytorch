@@ -16,6 +16,6 @@ DEEPMATCH:
   completeness: 2
 
 COLORMODEL:
-  iter: 20
+  iter: 100
   smooth_weight: 0.125
   non_local_weight: 2.0

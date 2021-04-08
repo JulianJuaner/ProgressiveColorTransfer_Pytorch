@@ -135,8 +135,8 @@ class BidirectNNF(nn.Module):
         data_AP = np2ts(data_AP_np, 0)
 
         img_AP = reconstruct_avg(ann_AB, img_BP, self.sizes[curr_layer], data_A_size[2:], data_B_size[2:])
-        img_AP = cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2RGB)
-        cv2.imwrite(os.path.join(self.cfg.FOLDER, "guidance_{}.png".format(5-curr_layer)), img_AP)
+        # cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2RGB)
+        cv2.imwrite(os.path.join(self.cfg.FOLDER, "guidance_{}.png".format(5-curr_layer)), cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2RGB))
 
         return img_AP, data_AP
 
