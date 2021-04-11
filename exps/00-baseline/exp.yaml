@@ -7,15 +7,15 @@ DATA:
   style_img_folder: demo/example/tar/
 
 DEEPMATCH:
-  layers: [29,20,11,6,1]
-  patch_sizes: [3,3,3,3,3,3]
-  rangee: [32,6,6,4,4,2]
-  iters: 8
+  layers: [29,6]
+  patch_sizes: [3,3,3,3,3]
+  iters: 10
   resize_ratio: 1.0
-  weight: 2
-  completeness: 2
+  completeness: 1
 
 COLORMODEL:
   iter: 250
   smooth_weight: 0.125
   non_local_weight: 2.0
+  kmeans_cluster: 10
+  k_nearest_num: 8

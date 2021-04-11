@@ -1,16 +1,21 @@
-from code.models.nnf import BidirectNNF, normalize, ts2np, np2ts, blend
-from deep_patch_match import VGG19, init_nnf, upSample_nnf, avg_vote, propagate, reconstruct_avg
-from guided_filter_pytorch.guided_filter import FastGuidedFilter
-
+import copy
+import datetime
 import os
+import time
+from code.models.nnf import BidirectNNF, blend, normalize, np2ts, ts2np
+
 import cv2
 import numpy as np
-import copy
-import time
-import datetime
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from deep_patch_match import (VGG19, avg_vote, init_nnf, propagate,
+                              reconstruct_avg, upSample_nnf)
+from guided_filter_pytorch.guided_filter import FastGuidedFilter
+from sklearn.cluster import KMeans
+from sklearn.neighbors import NearestNeighbors
+from tqdm import tqdm
+
 
 class ProgressiveTransfer(nn.Module):
     def __init__(self, cfg):
@@ -20,12 +25,17 @@ class ProgressiveTransfer(nn.Module):
         self.levels = len(cfg.DEEPMATCH.layers)
         self.nnf_match = BidirectNNF(cfg.DEEPMATCH, cfg)
         self.mse_loss = nn.MSELoss(reduction='none')
+
         self.smooth_weight = self.opt.smooth_weight
+        self.non_local_weight = self.opt.non_local_weight
+        self.kmeans_cluster = self.opt.kmeans_cluster
+        self.k_nearest_num = self.opt.k_nearest_num
+
         self.alpha_param = None#nn.Parameter(torch.ones((3, feat_AP.shape[-2], feat_AP.shape[-1])).cuda(), requires_grad=True)
         self.beta_param = None#nn.Parameter(torch.zeros((3, feat_AP.shape[-2], feat_AP.shape[-1])).cuda(), requires_grad=True)
         self.origin_size = None
 
-    def init_input(self, guidance, source, patch_size=5):
+    def init_input(self, guidance, source, patch_size=7):
         eps = 0.002
         height_s = source.shape[1]
         width_s = source.shape[2]
@@ -57,6 +67,7 @@ class ProgressiveTransfer(nn.Module):
     def forward(self, data):
         # Save VGG net for style images
         style_img = data["style_img"]
+
         origin_style = style_img[0].cpu().numpy().transpose(1,2,0).astype(np.uint8)  
         data_BP, data_B_size = self.nnf_match.feature_extraction(style_img.cuda())
         data_B = copy.deepcopy(data_BP)
@@ -80,13 +91,25 @@ class ProgressiveTransfer(nn.Module):
                                 cv2.INTER_CUBIC).astype(np.float32)
             
             temp_guidance_map, feat_AP = self.nnf_match.compute_guidance_map(intermidiate_img, style_img,
-                                        curr_layer, data_A[curr_layer], data_A_size[curr_layer],
-                                        data_BP[curr_layer], data_B_size[curr_layer])
+                                        curr_layer, data_A[curr_layer].clone(), data_A_size[curr_layer],
+                                        data_BP[curr_layer].clone(), data_B_size[curr_layer])
             
             # color estimation.
             self.alpha_param = nn.Parameter(torch.ones((3, feat_AP.shape[-2], feat_AP.shape[-1])).cuda(), requires_grad=False)
             self.beta_param = nn.Parameter(torch.zeros((3, feat_AP.shape[-2], feat_AP.shape[-1])).cuda(), requires_grad=False)
             cie_dataA = torch.FloatTensor(cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_RGB2Lab).transpose(2,0,1)).cuda()
+
+            # k means local constrain loss term.
+
+            # coarse_feat = data_A[0][0].cpu().numpy().transpose(1,2,0)
+            # dataA_kmeans = KMeans(n_clusters=self.kmeans_cluster, n_jobs=1).fit(coarse_feat.reshape(-1, coarse_feat.shape[2]))
+            # dataA_kmeans_labels = dataA_kmeans.labels_.reshape(coarse_feat.shape[:2])
+            # dataA_kmeans_labels = cv2.resize(dataA_kmeans_labels,
+            #                      data_A_size[curr_layer][3], data_A_size[curr_layer][2],
+            #                      cv2.INTER_NEAREST)
+            # nearest_neighbor = NearestNeighbors(n_neighbors=self.k_nearest_num).fit()
+
+            # print(dataA_kmeans_labels.shape)
             # print(img_AP, cie_dataA)
             cie_guidance = torch.FloatTensor(cv2.cvtColor(temp_guidance_map.astype(np.uint8), cv2.COLOR_RGB2Lab).transpose(2,0,1)).cuda()
             self.init_input(cie_guidance, cie_dataA)
@@ -94,15 +117,17 @@ class ProgressiveTransfer(nn.Module):
             vis_init = self.visualize(cie_intermidiate)
             cv2.imwrite(os.path.join(self.cfg.FOLDER, "init_inter_{}.png".format(5-curr_layer)), vis_init)
             # print(cie_guidance, cie_dataA, self.mse_loss(cie_dataA, cie_guidance))
-            optimizer = torch.optim.Adam([self.alpha_param, self.beta_param], lr=0.0005)
+            optimizer = torch.optim.Adam([self.alpha_param, self.beta_param], lr=0.000005)
             optimizer.zero_grad()
-            feature_error = torch.mean(normalize(self.mse_loss(feat_AP, data_A[curr_layer]))[0], dim=1)
+            feature_error = torch.mean(normalize(self.mse_loss(normalize(feat_AP)[0], normalize(data_A[curr_layer])[0]))[0], dim=1)
             
             print("mean of the feature error:", torch.mean(feature_error))
 
-            for iters in range(self.opt.iter):
+            for iters in tqdm(range(self.opt.iter*10)):
                 def closure():
+                    optimizer.zero_grad()
                     intermidiate_result = cie_dataA*self.alpha_param + self.beta_param
+                    # intermidiate_result = F.sigmoid(intermidiate_result/255)*255
                     # error_one: guidance limitation.
                     e_d = 4**(4-curr_layer)*torch.mean((1-feature_error)*(self.mse_loss(intermidiate_result, cie_guidance)))
                     
@@ -121,20 +146,34 @@ class ProgressiveTransfer(nn.Module):
                     e_right *= 1/(torch.pow(torch.abs(cie_dataA[0] - torch.roll(cie_dataA[0], shifts=1, dims=1)), 1.2) + 1e-4)
 
                     e_l = torch.mean(self.smooth_weight*(e_up + e_down + e_left + e_right))
-                    Loss = e_d + e_l
-                    Loss.backward(retain_graph=True)
+                    # print(e_l.item(), e_d.item())
+                    Loss = 1*e_d + e_l*0.1
+                    Loss.backward()
                     return Loss
 
+                # Loss = closure()
+                
+                # Loss.backward()
                 optimizer.step(closure)
+
+            # print(torch.from_numpy(img_AP.transpose(2,0,1)).unsqueeze(0).shape, self.alpha_param.detach().unsqueeze(0).cpu().shape, cie_intermidiate.unsqueeze(0).shape)
+            # alpha_param = FastGuidedFilter(1, eps=1e-08)(torch.from_numpy(img_AP.transpose(2,0,1)).unsqueeze(0).cuda(),
+            #                                  self.alpha_param.detach().unsqueeze(0).cuda(),
+            #                                  cie_intermidiate.unsqueeze(0).cuda()).squeeze()
+            # beta_param = FastGuidedFilter(1, eps=1e-08)(torch.from_numpy(img_AP.transpose(2,0,1)).unsqueeze(0).cuda(),
+            #                                  self.beta_param.detach().unsqueeze(0).cuda(),
+            #                                  cie_intermidiate.unsqueeze(0).cuda()).squeeze()
 
             alpha_param = F.interpolate(self.alpha_param.detach().unsqueeze(0), size=self.origin_size, mode='bilinear')[0]
             beta_param = F.interpolate(self.beta_param.detach().unsqueeze(0), size=self.origin_size, mode='bilinear')[0]
 
-            intermidiate_img_np = ((cie_intermidiate*alpha_param + beta_param)).cpu().numpy().transpose(1,2,0)
+            # intermidiate_img_np = ((F.sigmoid(cie_intermidiate*alpha_param + beta_param))).cpu().numpy().transpose(1,2,0)*255
+            intermidiate_img_np = (cie_intermidiate*alpha_param + beta_param).cpu().numpy().transpose(1,2,0)
             intermidiate_img_np = np.clip(intermidiate_img_np, 0, 255)
             intermidiate_img_np = cv2.cvtColor(intermidiate_img_np.astype(np.uint8), cv2.COLOR_LAB2BGR)
             cv2.imwrite(os.path.join(self.cfg.FOLDER, "inter_res_{}.png".format(5-curr_layer)), intermidiate_img_np)
-            intermidiate_img = torch.FloatTensor(intermidiate_img_np.transpose(2,0,1)).cuda()
+            intermidiate_img_ = torch.FloatTensor(intermidiate_img_np.transpose(2,0,1)).cuda()
+            intermidiate_img = (intermidiate_img + intermidiate_img_) /2
 
         res_dict = dict()
         return res_dict

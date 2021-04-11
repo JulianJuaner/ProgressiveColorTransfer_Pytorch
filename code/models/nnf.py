@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from deep_patch_match import (VGG19, avg_vote, init_nnf, propagate,
                               reconstruct_avg, upSample_nnf)
-
+from tqdm import tqdm
 
 def ts2np(x):
     x = x.squeeze(0)
@@ -108,7 +108,7 @@ class PatchMatch:
         return ybest, xbest, dbest
 
     def improve_nnf(self, total_iter=5):
-        for iter in range(total_iter):
+        for iter in tqdm(range(total_iter)):
             if iter % 2:
                 ystart, yend, ychange = self.ah - 1, -1, -1
                 xstart, xend, xchange = self.aw - 1, -1, -1
@@ -145,64 +145,9 @@ class PatchMatch:
 
                     self.nnf[ay, ax] = [ybest, xbest]
                     self.nnd[ay, ax] = dbest
-            
-            print("iteration:", str(iter + 1) + "/" + str(total_iter))
 
-    def solve(self):
-        self.improve_nnf(total_iter=8)
-
-def bds_vote(ref, nnf_sr, nnf_rs, patch_size=3):
-    """
-    Reconstructs an image or feature map by bidirectionaly
-    similarity voting
-    """
-
-    src_height = nnf_sr.shape[0]
-    src_width = nnf_sr.shape[1]
-    ref_height = nnf_rs.shape[0]
-    ref_width = nnf_rs.shape[1]
-    channel = ref.shape[0]
-
-    guide = np.zeros((channel, src_height, src_width))
-    weight = np.zeros((src_height, src_width))
-    ws = 1 / (src_height * src_width)
-    wr = 1 / (ref_height * ref_width)
-
-    # coherence
-    # The S->R forward NNF enforces coherence
-    for sy in range(src_height):
-        for sx in range(src_width):
-            ry, rx = nnf_sr[sy, sx]
-
-            dy0 = dx0 = patch_size // 2
-            dy1 = dx1 = patch_size // 2 + 1
-            dy0 = min(sy, ry, dy0)
-            dy1 = min(src_height - sy, ref_height - ry, dy1)
-            dx0 = min(sx, rx, dx0)
-            dx1 = min(src_width - sx, ref_width - rx, dx1)
-
-            guide[:, sy - dy0:sy + dy1, sx - dx0:sx + dx1] += ws * ref[:, ry - dy0:ry + dy1, rx - dx0:rx + dx1]
-            weight[sy - dy0:sy + dy1, sx - dx0:sx + dx1] += ws
-
-    # completeness
-    # The R->S backward NNF enforces completeness
-    for ry in range(ref_height):
-        for rx in range(ref_width):
-            sy, sx = nnf_rs[ry, rx]
-
-            dy0 = dx0 = patch_size // 2
-            dy1 = dx1 = patch_size // 2 + 1
-            dy0 = min(sy, ry, dy0)
-            dy1 = min(src_height - sy, ref_height - ry, dy1)
-            dx0 = min(sx, rx, dx0)
-            dx1 = min(src_width - sx, ref_width - rx, dx1)
-
-            guide[:, sy - dy0:sy + dy1, sx - dx0:sx + dx1] += wr * ref[:, ry - dy0:ry + dy1, rx - dx0:rx + dx1]
-            weight[sy - dy0:sy + dy1, sx - dx0:sx + dx1] += wr
-
-    weight[weight == 0] = 1
-    guide /= weight
-    return guide
+    def solve(self, total_iter=8):
+        self.improve_nnf(total_iter)
 
 class BidirectNNF(nn.Module):
     def __init__(self, opts, cfg):
@@ -210,13 +155,9 @@ class BidirectNNF(nn.Module):
         self.opts = opts
         self.cfg = cfg
         self.layers = opts.layers
-        if opts.weight == 2:
-            self.weights = [1.0, 0.8, 0.7, 0.6, 0.1, 0.0]
-        else:
-            self.weights = [1.0, 0.9, 0.8, 0.7, 0.2, 0.0]
         self.sizes = opts.patch_sizes
         self.iters = opts.iters
-        self.rangee = opts.rangee
+        self.completeness = opts.completeness
         # default: device 0.
         self.VGG19 = VGG19(0)
 
@@ -233,46 +174,26 @@ class BidirectNNF(nn.Module):
                             data_BP, 
                             data_B_size):
         # print(img_BP)
+        data_A = ts2np(data_A)
+        data_BP = ts2np(data_BP)
+        print("forward nnf matching...")
+        PM_forward = PatchMatch(data_A, data_BP)
+        PM_forward.solve(self.iters)
+        print("backward nnf matching...")
+        PM_backward = PatchMatch(data_BP, data_A)
+        PM_backward.solve(self.iters)
+
         img_BP = img_BP[0].numpy().transpose(1,2,0).astype(np.uint8)
         img_BP = cv2.resize(img_BP, (data_B_size[3], data_B_size[2]), cv2.INTER_CUBIC).astype(np.float32)
-        ann_AB = init_nnf(data_A_size[2:], data_B_size[2:])
-        ann_BA = init_nnf(data_B_size[2:], data_A_size[2:])
-        data_AP = copy.deepcopy(data_A)
-        data_B = copy.deepcopy(data_BP)
-
-        Ndata_A, response_A = normalize(data_A)
-        Ndata_BP, response_BP = normalize(data_BP)
-
-        data_AP = blend(response_A, data_A, data_AP, self.weights[curr_layer])
-        data_B = blend(response_BP, data_BP, data_B, self.weights[curr_layer])
-
-        Ndata_AP, _ = normalize(data_AP)
-        Ndata_B, _ = normalize(data_B)
-
-        # NNF search
-        print("- NNF search for self.ann_AB")
-        start_time_2 = time.time()
-        ann_AB, _ = propagate(ann_AB, ts2np(Ndata_A), ts2np(Ndata_AP), ts2np(Ndata_B), ts2np(Ndata_BP), self.sizes[curr_layer],
-                              self.iters, 128)
-        print("\tElapse: "+str(datetime.timedelta(seconds=time.time()- start_time_2))[:-7])
-        print("- NNF search for self.ann_BA")
-        start_time_2 = time.time()
-        ann_BA, _ = propagate(ann_BA, ts2np(Ndata_BP), ts2np(Ndata_B), ts2np(Ndata_AP), ts2np(Ndata_A), self.sizes[curr_layer],
-                              self.iters, 128)
-        print("\tElapse: "+str(datetime.timedelta(seconds=time.time()- start_time_2))[:-7])
-        print("feature shape", data_BP.shape, img_BP.shape)
-        img_AP = bds_vote(img_BP.transpose(2,0,1), ann_AB, ann_BA, 3).transpose(1,2,0)
-        data_AP_feat = bds_vote(ts2np(data_BP).transpose(2,0,1), ann_AB, ann_BA, 3).transpose(1,2,0)
+        print("bidirectional voting...")
+        img_AP = bds_vote(img_BP.transpose(2,0,1), PM_forward.nnf, PM_backward.nnf, self.sizes[curr_layer], self.completeness).transpose(1,2,0)
+        data_AP_feat = bds_vote(data_BP.transpose(2,0,1), PM_forward.nnf, PM_backward.nnf, self.sizes[curr_layer], self.completeness).transpose(1,2,0)
         data_AP = np2ts(data_AP_feat, 0)
-        print(data_AP.shape)
-        # img_AP = reconstruct_avg(ann_AB, img_BP, self.sizes[curr_layer], data_A_size[2:], data_B_size[2:])
-        # cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2RGB)
         cv2.imwrite(os.path.join(self.cfg.FOLDER, "guidance_{}.png".format(5-curr_layer)), cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2RGB))
-
         return img_AP, data_AP
 
 
-def bds_vote(ref, nnf_sr, nnf_rs, patch_size=3):
+def bds_vote(ref, nnf_sr, nnf_rs, patch_size=3, completeness=2):
     """
     Reconstructs an image or feature map by bidirectionaly
     similarity voting
@@ -287,7 +208,7 @@ def bds_vote(ref, nnf_sr, nnf_rs, patch_size=3):
     guide = np.zeros((channel, src_height, src_width))
     weight = np.zeros((src_height, src_width))
     ws = 1 / (src_height * src_width)
-    wr = 2 / (ref_height * ref_width)
+    wr = completeness / (ref_height * ref_width)
 
     # coherence
     # The S->R forward NNF enforces coherence
