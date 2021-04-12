@@ -7,8 +7,7 @@ import cv2
 import numpy as np
 import torch
 import torch.nn as nn
-from deep_patch_match import (VGG19, avg_vote, init_nnf, propagate,
-                              reconstruct_avg, upSample_nnf)
+from deep_patch_match import VGG19
 from tqdm import tqdm
 
 def ts2np(x):
@@ -172,10 +171,10 @@ class BidirectNNF(nn.Module):
                             data_A, 
                             data_A_size, 
                             data_BP, 
-                            data_B_size):
+                            data_B_size,index=0):
         # print(img_BP)
-        data_A = ts2np(data_A)
-        data_BP = ts2np(data_BP)
+        data_A = ts2np(normalize(data_A)[0])
+        data_BP = ts2np(normalize(data_BP)[0])
         print("forward nnf matching...")
         PM_forward = PatchMatch(data_A, data_BP)
         PM_forward.solve(self.iters)
@@ -189,7 +188,7 @@ class BidirectNNF(nn.Module):
         img_AP = bds_vote(img_BP.transpose(2,0,1), PM_forward.nnf, PM_backward.nnf, self.sizes[curr_layer], self.completeness).transpose(1,2,0)
         data_AP_feat = bds_vote(data_BP.transpose(2,0,1), PM_forward.nnf, PM_backward.nnf, self.sizes[curr_layer], self.completeness).transpose(1,2,0)
         data_AP = np2ts(data_AP_feat, 0)
-        cv2.imwrite(os.path.join(self.cfg.FOLDER, "guidance_{}.png".format(5-curr_layer)), cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2RGB))
+        cv2.imwrite(os.path.join(self.cfg.FOLDER, "{}_guidance_{}.png".format(index, 5-curr_layer)), cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2RGB))
         return img_AP, data_AP
 
 

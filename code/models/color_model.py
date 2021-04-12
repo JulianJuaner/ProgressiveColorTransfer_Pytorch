@@ -9,8 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from deep_patch_match import (VGG19, avg_vote, init_nnf, propagate,
-                              reconstruct_avg, upSample_nnf)
+from deep_patch_match import VGG19
 from guided_filter_pytorch.guided_filter import FastGuidedFilter
 from sklearn.cluster import KMeans
 from sklearn.neighbors import NearestNeighbors
@@ -34,6 +33,7 @@ class ProgressiveTransfer(nn.Module):
         self.alpha_param = None#nn.Parameter(torch.ones((3, feat_AP.shape[-2], feat_AP.shape[-1])).cuda(), requires_grad=True)
         self.beta_param = None#nn.Parameter(torch.zeros((3, feat_AP.shape[-2], feat_AP.shape[-1])).cuda(), requires_grad=True)
         self.origin_size = None
+        self.index = 0
 
     def init_input(self, guidance, source, patch_size=7):
         eps = 0.002
@@ -78,8 +78,8 @@ class ProgressiveTransfer(nn.Module):
         origin_content = intermidiate_img.cpu().numpy().transpose(1,2,0).astype(np.uint8)
         cie_origin_content = torch.FloatTensor(cv2.cvtColor(origin_content.astype(np.uint8), cv2.COLOR_RGB2Lab).transpose(2,0,1)).cuda()
 
-        cv2.imwrite(os.path.join(self.cfg.FOLDER, "content.png"), cv2.cvtColor(origin_content, cv2.COLOR_RGB2BGR))
-        cv2.imwrite(os.path.join(self.cfg.FOLDER, "style.png"), cv2.cvtColor(origin_style, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(os.path.join(self.cfg.FOLDER, "{}_content.png".format(self.index)), cv2.cvtColor(origin_content, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(os.path.join(self.cfg.FOLDER, "{}_style.png".format(self.index)), cv2.cvtColor(origin_style, cv2.COLOR_RGB2BGR))
         print(intermidiate_img.shape)
         
         for curr_layer in range(self.levels):
@@ -92,7 +92,7 @@ class ProgressiveTransfer(nn.Module):
             
             temp_guidance_map, feat_AP = self.nnf_match.compute_guidance_map(intermidiate_img, style_img,
                                         curr_layer, data_A[curr_layer].clone(), data_A_size[curr_layer],
-                                        data_BP[curr_layer].clone(), data_B_size[curr_layer])
+                                        data_BP[curr_layer].clone(), data_B_size[curr_layer], index=self.index)
             
             # color estimation.
             self.alpha_param = nn.Parameter(torch.ones((3, feat_AP.shape[-2], feat_AP.shape[-1])).cuda(), requires_grad=False)
@@ -115,9 +115,9 @@ class ProgressiveTransfer(nn.Module):
             self.init_input(cie_guidance, cie_dataA)
 
             vis_init = self.visualize(cie_intermidiate)
-            cv2.imwrite(os.path.join(self.cfg.FOLDER, "init_inter_{}.png".format(5-curr_layer)), vis_init)
+            cv2.imwrite(os.path.join(self.cfg.FOLDER, "{}_init_inter_{}.png".format(self.index, 5-curr_layer)), vis_init)
             # print(cie_guidance, cie_dataA, self.mse_loss(cie_dataA, cie_guidance))
-            optimizer = torch.optim.Adam([self.alpha_param, self.beta_param], lr=0.000005)
+            optimizer = torch.optim.Adam([self.alpha_param, self.beta_param], lr=0.00005)
             optimizer.zero_grad()
             feature_error = torch.mean(normalize(self.mse_loss(normalize(feat_AP)[0], normalize(data_A[curr_layer])[0]))[0], dim=1)
             
@@ -147,7 +147,7 @@ class ProgressiveTransfer(nn.Module):
 
                     e_l = torch.mean(self.smooth_weight*(e_up + e_down + e_left + e_right))
                     # print(e_l.item(), e_d.item())
-                    Loss = 1*e_d + e_l*0.1
+                    Loss = 1*e_d + e_l
                     Loss.backward()
                     return Loss
 
@@ -171,10 +171,11 @@ class ProgressiveTransfer(nn.Module):
             intermidiate_img_np = (cie_intermidiate*alpha_param + beta_param).cpu().numpy().transpose(1,2,0)
             intermidiate_img_np = np.clip(intermidiate_img_np, 0, 255)
             intermidiate_img_np = cv2.cvtColor(intermidiate_img_np.astype(np.uint8), cv2.COLOR_LAB2BGR)
-            cv2.imwrite(os.path.join(self.cfg.FOLDER, "inter_res_{}.png".format(5-curr_layer)), intermidiate_img_np)
+            cv2.imwrite(os.path.join(self.cfg.FOLDER, "{}_inter_res_{}.png".format(self.index, 5-curr_layer)), intermidiate_img_np)
             intermidiate_img_ = torch.FloatTensor(intermidiate_img_np.transpose(2,0,1)).cuda()
             intermidiate_img = (intermidiate_img + intermidiate_img_) /2
 
         res_dict = dict()
+        self.index += 1
         return res_dict
 
