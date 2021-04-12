@@ -117,7 +117,7 @@ class ProgressiveTransfer(nn.Module):
             vis_init = self.visualize(cie_intermidiate)
             cv2.imwrite(os.path.join(self.cfg.FOLDER, "{}_init_inter_{}.png".format(self.index, 5-curr_layer)), vis_init)
             # print(cie_guidance, cie_dataA, self.mse_loss(cie_dataA, cie_guidance))
-            optimizer = torch.optim.Adam([self.alpha_param, self.beta_param], lr=0.00005)
+            optimizer = torch.optim.Adam([self.alpha_param, self.beta_param], lr=0.000005)
             optimizer.zero_grad()
             feature_error = torch.mean(normalize(self.mse_loss(normalize(feat_AP)[0], normalize(data_A[curr_layer])[0]))[0], dim=1)
             
@@ -173,7 +173,7 @@ class ProgressiveTransfer(nn.Module):
             intermidiate_img_np = cv2.cvtColor(intermidiate_img_np.astype(np.uint8), cv2.COLOR_LAB2BGR)
             cv2.imwrite(os.path.join(self.cfg.FOLDER, "{}_inter_res_{}.png".format(self.index, 5-curr_layer)), intermidiate_img_np)
             intermidiate_img_ = torch.FloatTensor(intermidiate_img_np.transpose(2,0,1)).cuda()
-            intermidiate_img = (intermidiate_img + intermidiate_img_) /2
+            intermidiate_img = intermidiate_img_# (intermidiate_img + intermidiate_img_) /2
 
         res_dict = dict()
         self.index += 1
