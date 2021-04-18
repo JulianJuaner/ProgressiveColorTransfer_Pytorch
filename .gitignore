@@ -1,5 +1,6 @@
 origin_caffe*
 *.pyc
+*.log
 *prototxt
 *.bat
 *exp*
