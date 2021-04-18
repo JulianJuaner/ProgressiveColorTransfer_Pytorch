@@ -4,8 +4,8 @@ CSCI5210 Project | Pytorch Re-Implementation: Progressive Color Transfer with De
 It is just a non-official course project implementation, offcial C++ implementation is [here](https://github.com/hmmlillian/Neural-Color-Transfer).
 
 ```bash
-export PYTHONPATH=/path/to/the/project5210-ProgressiveColorTransfer:$PYTHONPATH
-cd 5210-ProgressiveColorTransfer
+export PYTHONPATH=/path/to/the/project/ProgressiveColorTransfer_Pytorch:$PYTHONPATH
+cd ProgressiveColorTransfer_Pytorch
 bash exps/00-baseline/inference.sh
 ```
 ## Results
