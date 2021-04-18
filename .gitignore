@@ -5,6 +5,5 @@ origin_caffe*
 *.bat
 *exp*
 *results*
-*demo*
 *pipeline*
 *res*
