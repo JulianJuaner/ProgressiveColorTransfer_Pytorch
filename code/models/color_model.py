@@ -22,7 +22,6 @@ class ProgressiveTransfer(nn.Module):
         self.opt = cfg.COLORMODEL
         self.cfg = cfg
         self.levels = len(cfg.DEEPMATCH.layers)
-        self.nnf_match = BidirectNNF(cfg.DEEPMATCH, cfg)
         self.mse_loss = nn.MSELoss(reduction='none')
 
         self.smooth_weight = self.opt.smooth_weight
@@ -35,7 +34,7 @@ class ProgressiveTransfer(nn.Module):
         self.origin_size = None
         self.index = 0
 
-    def init_input(self, guidance, source, patch_size=7):
+    def init_input(self, guidance, source, patch_size=5):
         eps = 0.0002
         height_s = source.shape[1]
         width_s = source.shape[2]
@@ -57,8 +56,8 @@ class ProgressiveTransfer(nn.Module):
         self.beta_param.requires_grad_()
 
     def visualize(self, cie_intermidiate):
-        alpha_param = F.interpolate(self.alpha_param.detach().unsqueeze(0), size=self.origin_size, mode='bilinear')[0]
-        beta_param = F.interpolate(self.beta_param.detach().unsqueeze(0), size=self.origin_size, mode='bilinear')[0]
+        alpha_param = F.interpolate(self.alpha_param.detach().unsqueeze(0), size=self.origin_size, mode='bilinear', align_corners=True)[0]
+        beta_param = F.interpolate(self.beta_param.detach().unsqueeze(0), size=self.origin_size, mode='bilinear', align_corners=True)[0]
         intermidiate_img_np = ((cie_intermidiate*alpha_param + beta_param)).cpu().numpy().transpose(1,2,0)*255
         intermidiate_img_np = np.clip(intermidiate_img_np, 0, 255)
         intermidiate_img_np[:,:,1] = np.clip(intermidiate_img_np[:,:,1], 42, 226)
@@ -67,6 +66,7 @@ class ProgressiveTransfer(nn.Module):
         return intermidiate_img_np
 
     def forward(self, data):
+        self.nnf_match = BidirectNNF(self.cfg.DEEPMATCH, self.cfg)
         # Save VGG net for style images
         style_img = data["style_img"]
 
@@ -120,13 +120,13 @@ class ProgressiveTransfer(nn.Module):
             vis_init = self.visualize(cie_intermidiate)
             cv2.imwrite(os.path.join(self.cfg.FOLDER, "{}_init_inter_{}.png".format(self.index, 5-curr_layer)), vis_init)
             # print(cie_guidance, cie_dataA, self.mse_loss(cie_dataA, cie_guidance))
-            optimizer = torch.optim.Adam([self.alpha_param, self.beta_param], lr=0.00002)
+            optimizer = torch.optim.SGD([self.alpha_param, self.beta_param], lr=0.0002)
             optimizer.zero_grad()
             feature_error = torch.mean(normalize(self.mse_loss(normalize(feat_AP)[0], normalize(data_A[curr_layer])[0]))[0], dim=1)
             
             print("mean of the feature error:", torch.mean(feature_error))
 
-            for iters in tqdm(range(self.opt.iter*4)):
+            for iters in tqdm(range(self.opt.iter)*4):
                 def closure():
                     optimizer.zero_grad()
                     intermidiate_result = cie_dataA*self.alpha_param + self.beta_param
@@ -155,21 +155,10 @@ class ProgressiveTransfer(nn.Module):
                     Loss.backward()
                     return Loss
 
-                # Loss = closure()
-                
-                # Loss.backward()
                 optimizer.step(closure)
 
-            # print(torch.from_numpy(img_AP.transpose(2,0,1)).unsqueeze(0).shape, self.alpha_param.detach().unsqueeze(0).cpu().shape, cie_intermidiate.unsqueeze(0).shape)
-            # alpha_param = FastGuidedFilter(1, eps=1e-08)(torch.from_numpy(img_AP.transpose(2,0,1)).unsqueeze(0).cuda(),
-            #                                  self.alpha_param.detach().unsqueeze(0).cuda(),
-            #                                  cie_intermidiate.unsqueeze(0).cuda()).squeeze()
-            # beta_param = FastGuidedFilter(1, eps=1e-08)(torch.from_numpy(img_AP.transpose(2,0,1)).unsqueeze(0).cuda(),
-            #                                  self.beta_param.detach().unsqueeze(0).cuda(),
-            #                                  cie_intermidiate.unsqueeze(0).cuda()).squeeze()
-
-            alpha_param = F.interpolate(self.alpha_param.detach().unsqueeze(0), size=self.origin_size, mode='bilinear')[0]
-            beta_param = F.interpolate(self.beta_param.detach().unsqueeze(0), size=self.origin_size, mode='bilinear')[0]
+            alpha_param = F.interpolate(self.alpha_param.detach().unsqueeze(0), size=self.origin_size, mode='bilinear', align_corners=True)[0]
+            beta_param = F.interpolate(self.beta_param.detach().unsqueeze(0), size=self.origin_size, mode='bilinear', align_corners=True)[0]
             momentum=0.6
             # intermidiate_img_np = ((F.sigmoid(cie_intermidiate*alpha_param + beta_param))).cpu().numpy().transpose(1,2,0)*255
             intermidiate_img_np = (cie_intermidiate*((1-momentum) + momentum*alpha_param) + momentum*beta_param).cpu().numpy().transpose(1,2,0)*255

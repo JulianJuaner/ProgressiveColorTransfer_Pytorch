@@ -7,8 +7,8 @@ DATA:
   style_img_folder: demo/example/tar/
 
 DEEPMATCH:
-  layers: [29,20,11,6,1]
-  patch_sizes: [3,3,3,3,3,3]
+  layers: [29,20,11]
+  patch_sizes: [3,3,3]
   iters: 10
   resize_ratio: 1.0
   completeness: 2

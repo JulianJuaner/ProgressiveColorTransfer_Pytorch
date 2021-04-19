@@ -200,52 +200,60 @@ class BidirectNNF(nn.Module):
                             data_BP, 
                             data_B_size,index=0):
         # print(img_BP)
+        print('ITERATION {}'.format(curr_layer))
         b,c,h_A,w_A = data_A.shape
         b,c,h_B,w_B = data_BP.shape
+        if curr_layer < 1: 
         # neural-based method.
-        # temp_A = normalize(data_A)[0].clone().cuda().view(c,-1).permute(1,0)
-        # temp_BP = normalize(data_BP)[0].clone().cuda().view(c,-1).permute(1,0)
-        # norms_A = torch.sum(temp_A**2, dim=1, keepdim=True)
-        # norms_BP = torch.sum(temp_BP**2, dim=1, keepdim=True)
-        # norms = (norms_A.expand(h_A*w_A, h_B*w_B) +
-        #          norms_BP.transpose(0, 1).expand(h_A*w_A, h_B*w_B))
-        # distances_squared = norms - 2 * temp_A.mm(temp_BP.t())
-        # distances_squared = torch.abs(distances_squared)
-        # neural_nnf_forward = torch.argmin(distances_squared, dim=1).view(h_A,w_A, 1)
-        # neural_nnf_backward = torch.argmin(distances_squared, dim=0).view(h_B,w_B, 1)
-        # neural_nnf_forward_x = neural_nnf_forward//w_B
-        # neural_nnf_forward_y = neural_nnf_forward%w_B
-        # neural_nnf_forward = torch.cat((neural_nnf_forward_x, neural_nnf_forward_y), dim=-1).cpu().numpy()
-        # neural_nnf_backward_x = neural_nnf_backward//w_A
-        # neural_nnf_backward_y = neural_nnf_backward%w_A
-        # neural_nnf_backward = torch.cat((neural_nnf_backward_x, neural_nnf_backward_y), dim=-1).cpu().numpy()
+            time_start = time.time()
+            temp_A = normalize(data_A)[0].clone().cuda().view(c,-1).permute(1,0)
+            temp_BP = normalize(data_BP)[0].clone().cuda().view(c,-1).permute(1,0)
+            norms_A = torch.sum(temp_A**2, dim=1, keepdim=True)
+            norms_BP = torch.sum(temp_BP**2, dim=1, keepdim=True)
+            norms = (norms_A.expand(h_A*w_A, h_B*w_B) +
+                    norms_BP.transpose(0, 1).expand(h_A*w_A, h_B*w_B))
+            distances_squared = norms - 2 * temp_A.mm(temp_BP.t())
+            distances_squared = torch.abs(distances_squared)
+            neural_nnf_forward = torch.argmin(distances_squared, dim=1).view(h_A,w_A, 1)
+            neural_nnf_backward = torch.argmin(distances_squared, dim=0).view(h_B,w_B, 1)
+            neural_nnf_forward_x = neural_nnf_forward//w_B
+            neural_nnf_forward_y = neural_nnf_forward%w_B
+            neural_nnf_forward = torch.cat((neural_nnf_forward_x, neural_nnf_forward_y), dim=-1).cpu().numpy()
+            neural_nnf_backward_x = neural_nnf_backward//w_A
+            neural_nnf_backward_y = neural_nnf_backward%w_A
+            neural_nnf_backward = torch.cat((neural_nnf_backward_x, neural_nnf_backward_y), dim=-1).cpu().numpy()
+            print("matching_time:", time.time() - time_start)
+            data_A = ts2np(normalize(data_A)[0])
+            data_BP = ts2np(normalize(data_BP)[0])
         
-        
-        data_A = ts2np(normalize(data_A)[0])
-        data_BP = ts2np(normalize(data_BP)[0])
-        print("forward nnf matching...")
-        PM_forward = PatchMatch(data_A, data_BP)
-        if self.nnf_AB is not None:
-            PM_forward.re_init(self.nnf_AB)
-        PM_forward.solve(self.iters)
-        print("backward nnf matching...")
-        PM_backward = PatchMatch(data_BP, data_A)
-        if self.nnf_BA is not None:
-            PM_backward.re_init(self.nnf_BA)
-        PM_backward.solve(self.iters)
-        neural_nnf_forward = PM_forward.nnf
-        neural_nnf_backward = PM_backward.nnf
+        else:
+            data_A = ts2np(normalize(data_A)[0])
+            data_BP = ts2np(normalize(data_BP)[0])
+            print("forward nnf matching...")
+            PM_forward = PatchMatch(data_A, data_BP)
+            if self.nnf_AB is not None:
+                PM_forward.re_init(self.nnf_AB)
+            PM_forward.solve(self.iters)
+            print("backward nnf matching...")
+            PM_backward = PatchMatch(data_BP, data_A)
+            if self.nnf_BA is not None:
+                PM_backward.re_init(self.nnf_BA)
+            PM_backward.solve(self.iters)
+            neural_nnf_forward = PM_forward.nnf
+            neural_nnf_backward = PM_backward.nnf
+
         img_BP = img_BP[0].numpy().transpose(1,2,0).astype(np.uint8)
         img_BP = cv2.resize(img_BP, (data_B_size[3], data_B_size[2]), cv2.INTER_CUBIC).astype(np.float32)
-        print("bidirectional voting...",img_BP.shape, neural_nnf_forward.shape, neural_nnf_backward.shape)
+
+        print("bidirectional voting...")
         img_AP = bds_vote(img_BP.transpose(2,0,1), neural_nnf_forward, neural_nnf_backward, self.sizes[curr_layer], self.completeness).transpose(1,2,0)
         data_AP_feat = bds_vote(data_BP.transpose(2,0,1), neural_nnf_forward, neural_nnf_backward, self.sizes[curr_layer], self.completeness).transpose(1,2,0)
         data_AP = np2ts(data_AP_feat, 0)
         cv2.imwrite(os.path.join(self.cfg.FOLDER, "{}_guidance_{}.png".format(index, 5-curr_layer)), cv2.cvtColor(img_AP.astype(np.uint8), cv2.COLOR_BGR2RGB))
         # save for the next level.
         # print(self.nnf_AB, PM_forward.nnf)
-        self.nnf_AB = PM_forward.nnf
-        self.nnf_BA = PM_backward.nnf
+        self.nnf_AB = neural_nnf_forward
+        self.nnf_BA = neural_nnf_backward
         return img_AP, data_AP
 
 
